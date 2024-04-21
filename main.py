@@ -1,51 +1,35 @@
-import os
-import pickle
+import cv2
+from PIL import Image
 
-from skimage.io import imread
-from skimage.transform import resize
-import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.model_selection import GridSearchCV
-from sklearn.svm import SVC
-from sklearn.metrics import accuracy_score
+from util import get_limits
 
 
-# prepare data
-input_dir = '/home/phillip/Desktop/todays_tutorial/19_parking_car_counter/code/clf-data'
-categories = ['empty', 'not_empty']
+yellow = [0, 255, 255]  # yellow in BGR colorspace
+cap = cv2.VideoCapture(2)
+while True:
+    ret, frame = cap.read()
 
-data = []
-labels = []
-for category_idx, category in enumerate(categories):
-    for file in os.listdir(os.path.join(input_dir, category)):
-        img_path = os.path.join(input_dir, category, file)
-        img = imread(img_path)
-        img = resize(img, (15, 15))
-        data.append(img.flatten())
-        labels.append(category_idx)
+    hsvImage = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
-data = np.asarray(data)
-labels = np.asarray(labels)
+    lowerLimit, upperLimit = get_limits(color=yellow)
 
-# train / test split
-x_train, x_test, y_train, y_test = train_test_split(data, labels, test_size=0.2, shuffle=True, stratify=labels)
+    mask = cv2.inRange(hsvImage, lowerLimit, upperLimit)
 
-# train classifier
-classifier = SVC()
+    mask_ = Image.fromarray(mask)
 
-parameters = [{'gamma': [0.01, 0.001, 0.0001], 'C': [1, 10, 100, 1000]}]
+    bbox = mask_.getbbox()
 
-grid_search = GridSearchCV(classifier, parameters)
+    if bbox is not None:
+        x1, y1, x2, y2 = bbox
 
-grid_search.fit(x_train, y_train)
+        frame = cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 5)
 
-# test performance
-best_estimator = grid_search.best_estimator_
+    cv2.imshow('frame', frame)
 
-y_prediction = best_estimator.predict(x_test)
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
 
-score = accuracy_score(y_prediction, y_test)
+cap.release()
 
-print('{}% of samples were correctly classified'.format(str(score * 100)))
+cv2.destroyAllWindows()
 
-pickle.dump(best_estimator, open('./model.p', 'wb'))
